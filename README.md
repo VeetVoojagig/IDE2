@@ -152,7 +152,7 @@ FILES IN THIS REPOSITORY
 --------------------------------------------------------------------------------
 
 ```
-  2026-09-28 IDE Simulations.R   The current simulation script
+  2026-10-15 IDE Simulations.R   The current simulation script
   RunScript.R                    Sources the simulation script
   README.md                      This file
 ```
@@ -182,7 +182,7 @@ them in your session before sourcing the script:
 ```
   K               Number of replications (default 1e6)
   sweep_K_max     Upper limit on replications for the threshold sweep
-                  (default 1e5)
+                  (default K)
   skip_appendix   TRUE skips the costly appendix pass
   force_rerun_*   TRUE rebuilds that cache (OLDHAM, MLM, SWEEP)
   cache_version   Change this to invalidate every existing cache

@@ -73,9 +73,10 @@ rm(list = c("itn", "new_pkgs", "pkgs"))
 #                 severity plot, since each lavaan fit is expensive & the
 #                 "MLM stays near 5%" claim only firms up at a much larger K.
 # sweep_K_max   : ceiling on the threshold sweep's replication count (both
-#                 legs, PART FOUR): sweep_K = min(K, sweep_K_max). The MLM
-#                 sweep leg at K = 1e6 would run for about a week, so it is
-#                 held at 1e5; set sweep_K_max <- K to run the sweep at full K.
+#                 legs, PART FOUR): sweep_K = min(K, sweep_K_max). Set to K,
+#                 so the sweep runs at full K. The MLM sweep leg at K = 1e6
+#                 took about 4.3 days on 32 cores; to run the sweep for fewer
+#                 replications, set sweep_K_max lower (e.g., sweep_K_max <- 1e5).
 #                 The PART FIVE diagnostic is Oldham only & still uses full K
 # chunk_size    : progress bar, parallel dispatch, & checkpoint granularity
 #                 for Oldham/sweep/diagnostic (PART THREE, PART FIVE)
@@ -103,7 +104,7 @@ if (!exists("force_rerun_SWEEP"))   force_rerun_SWEEP   <- FALSE
 if (!exists("skip_appendix"))       skip_appendix       <- FALSE
 if (!exists("parallel_K"))          parallel_K          <- 1000
 if (!exists("K"))                   K                   <- 1e6
-if (!exists("sweep_K_max"))         sweep_K_max         <- 1e5
+if (!exists("sweep_K_max"))         sweep_K_max         <- K
 if (!exists("chunk_size"))          chunk_size          <- 5e3
 if (!exists("mlm_chnk_size"))       mlm_chnk_size       <- 100
 if (!exists("sweep_pct"))           sweep_pct           <- c(25, 5, 1, 0.2)
@@ -973,6 +974,21 @@ run_one_replication_CD_mlm <- function(rep_i, z_tag) {
     p_D_vs_comparator_neg    = mD_neg$vs_comparator$p,
     conv_D_vs_comparator_neg = mD_neg$vs_comparator$converged)) }
 
+## FUNCTIONS  -- GLOBAL OBJECTS EXPORTED TO CLUSTER WORKERS --------------------
+
+# Names of the global objects sent to each worker: everything except the
+# per-replication results tables (data frames with a rep column, one row per
+# replication). Workers only generate & test fresh replications, so they never
+# read a results table, & at large K a copy of every table on every worker
+# costs over 1 GB of memory per worker
+
+worker_export_names <- function() {
+  obj_names  <- ls(envir = .GlobalEnv)
+  is_results <- vapply(obj_names, function(obj_name) {
+    obj      <- get(obj_name, envir = .GlobalEnv)
+    is.data.frame(obj) && "rep" %in% names(obj) }, logical(1))
+  return(obj_names[!is_results]) }
+
 ## FUNCTIONS  -- RUN REPLICATIONS IN CHECKPOINTED CHUNKS -----------------------
 
 # Runs K replicates in fixed-size batches of chunk_size, logging progress after
@@ -1042,7 +1058,7 @@ run_reps_chunked <- function(K, parallel_K,
     # built with libraries loaded; just re-export the global environment, since
     # closures like z_tag-specific pool sets can change between calls that
     # share the same persistent cluster
-    clusterExport(cl, varlist = ls(envir = .GlobalEnv), envir = .GlobalEnv)
+    clusterExport(cl, varlist = worker_export_names(), envir = .GlobalEnv)
     n_chunks   <- length(remaining_chunk_bounds) - 1
     log_step(sprintf("dispatching %d replications in %d %s of %d", 
                      length(remaining_ids), n_chunks,
@@ -1115,7 +1131,7 @@ get_script_cl <- function(needs_parallel = (K > parallel_K)) {
   n_cores        <- detectCores()
   log_step(sprintf("STARTING SCRIPT-WIDE CLUSTER (%d cores) ", n_cores), 1)
   cl_tmp         <- makeCluster(n_cores)
-  clusterExport(cl_tmp, varlist = ls(envir = .GlobalEnv), envir = .GlobalEnv)
+  clusterExport(cl_tmp, varlist = worker_export_names(), envir = .GlobalEnv)
   clusterEvalQ(cl_tmp, { library(MASS); library(cocor); library(psych); 
     library(lavaan); return(NULL) })
   log_step("script-wide cluster now ready")
